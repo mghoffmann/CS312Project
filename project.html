@@ -1,0 +1,156 @@
+<html>
+<head>
+  <title>Dynamic Rigging With Vertex Groups</title>
+  <script src="./js/three.min.js"></script>
+  <script src="./js/dat.gui.min.js"></script>
+  <script src="VertexGroup.js"></script>
+  <script src="KeyConstraints.js"></script>
+  <script src="SpiralTower.js"></script>
+  <script src="LoadHandModel.js"></script>
+</head>
+<body style="background-color: black">
+</body>
+<div id="ThreeJS" style="position: absolute; left:0px; top:0px"></div>
+
+<script type="text/javascript" defer="defer">
+"use strict"
+var scene, camera, renderer, light;
+var gui = new dat.GUI();
+
+var controls = {
+  weight: 1.0,
+  weightDelta: 0.5,
+  translated: 0
+};
+
+gui.add(controls, "weight").name("Weight").min(-1.0).max(1.0).step(0.05);
+gui.add(controls, "weightDelta").name("Weight Delta").min(0.0).max(2.0).step(0.001);
+gui.add(controls, "translated").name("Faces translated").min(0).max(Number.MAX_SAFE_INTEGER);
+
+// Create the main scene for the 3D drawing
+scene = new THREE.Scene();
+// Every scene needs a camera
+camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 10000);
+
+function workWithMesh(mesh) {
+  scene.add(mesh);
+  
+  var geo = mesh.geometry;
+
+  geo.computeFaceNormals();
+
+  for (var i = 0; i < geo.faces.length; i++) {
+    var face = geo.faces[i];
+    scene.add(new THREE.ArrowHelper(face.normal, midpoint(geo, [face.a, face.b, face.c]), 25, 0x0000ff));
+  }
+  geo.computeBoundingSphere();
+
+
+  var keys = [];
+  var keyPositions = [];
+  var groups = [];
+  var groupedVertices = [];
+  var currentGroup = [];
+  var addGroup = function() {
+    keys.push(face.a);
+    keyPositions.push(geo.vertices[face.a].clone());
+    //face.vertexColors[0] = 0x00ff00;
+    scene.add(new THREE.ArrowHelper(face.normal, midpoint(geo, currentGroup), 50, 0x00ff00));
+
+    // remove face.a from the current group, so it's not rigged to itself
+    var index = currentGroup.indexOf(face.a);
+    if (index != -1)
+      currentGroup.splice(index, 1);
+
+    var constraints = [new DistanceConstraint(new THREE.Vector3(10, 10, 10))];
+    groups.push(new VertexGroup(geo, face.a, currentGroup, constraints));
+
+    // Reset the current group.
+    currentGroup = [];
+  };
+
+  for (var i = 0; i < geo.faces.length; i++) {
+
+    var face = geo.faces[i];
+
+    if ((i + 1) % 10 == 0) {
+      addGroup();
+    }
+    else {
+      if (!groupedVertices.includes(face.a))
+        groupedVertices.push(face.a);
+      if (!groupedVertices.includes(face.b))
+        groupedVertices.push(face.b);
+      if (!groupedVertices.includes(face.c))
+        groupedVertices.push(face.c);
+
+      currentGroup.push(face.a, face.b, face.c);
+    }
+  }
+
+  if (currentGroup.length > 0)
+    addGroup();
+  addGroup = null;
+
+  handLoaded = true;
+}
+
+var handLoaded = false;
+LoadHandModel(workWithMesh);
+
+var light = new THREE.HemisphereLight(0x7ec0ee, 0x000000, 75);
+scene.add(light);
+
+renderer = new THREE.WebGLRenderer();
+renderer.setSize( window.innerWidth, window.innerHeight );
+// Attach the threeJS renderer to the HTML page
+document.body.appendChild( renderer.domElement );
+
+var frame = 0;
+
+var distance = 150;
+scene.add(new THREE.AxisHelper(distance));
+
+var cameraY = 75;
+var pause = false;
+
+// This is the game/animation loop
+function animate() {
+  requestAnimationFrame( animate );
+
+  if (!pause) {
+    camera.position.set(Math.sin(frame / 200) * distance, cameraY, Math.cos(frame / 200) * distance);
+    var target = scene.position.clone();
+    target.y = cameraY;
+    camera.lookAt(target);
+    frame++;
+  }
+
+  if (handLoaded) {
+    for (var i = 0; i < groups.length; i++) {
+      groups[i].update();
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+function showStats() {
+  document.getElementById("stats").innerText = "" + translated + " faces translated";
+}
+
+</script>
+
+<div id="label" style="position: absolute; left:0px; top:0px; color: white; background-color: darkblue;">
+<button onclick="geo.vertices[keys[0]].add(new THREE.Vector3(10, 0, 0));">Up</button><br/>
+<button onclick="translated = 0; riggables[0].translate(new THREE.Vector3(-10,0,0), controls.weight, controls.weightDelta); showStats()">Left</button>
+<button onclick="translated = 0; riggables[0].translate(new THREE.Vector3(Math.random() * 10 - 5,Math.random() * 10 - 5,Math.random() * 10 - 5), controls.weight, controls.weightDelta); showStats()">Random</button>
+<button onclick="translated = 0; riggables[0].translate(new THREE.Vector3(10,0,0), controls.weight, controls.weightDelta); showStats()">Right</button><br/>
+<button onclick="translated = 0; riggables[0].translate(new THREE.Vector3(0,-10,0), controls.weight, controls.weightDelta); showStats()">Down</button><br/>
+<br/>
+<button onclick="pause = !pause">Pause</button>
+<div id="stats"></div>
+</div>
+</html>
